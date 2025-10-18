@@ -113,6 +113,8 @@ function saveData(data) {
     }
 }
 
+// ========== API ROUTES ==========
+
 // Esas route
 app.get("/", (req, res) => {
     res.json({
@@ -123,129 +125,37 @@ app.get("/", (req, res) => {
     });
 });
 
-// API Routes - BUNLARI ƏLAVƏ ETDİM
-
-// Ümumi məlumatları gətir
+// Butun melumatlari getir
 app.get("/api/data", (req, res) => {
     const data = loadData();
     res.json(data.files);
 });
 
-// Müəllim məlumatlarını gətir
+// Muellim giriş məlumatları
 app.get("/api/teachers", (req, res) => {
     const data = loadData();
     res.json(data.credentials.teachers);
 });
 
-// Modul məlumatlarını gətir
+// Modul giriş məlumatları
 app.get("/api/modules", (req, res) => {
     const data = loadData();
     res.json(data.credentials.modules);
 });
 
-// Müəyyən fənn və modul üçün faylları gətir
+// Faylları getir (fenn ve modula gore)
 app.get("/api/files/:subject/:module", (req, res) => {
     const { subject, module } = req.params;
     const data = loadData();
     
     if (data.files[subject] && data.files[subject][module]) {
-        // Fayl məlumatlarını formatla
-        const files = data.files[subject][module].map(file => ({
-            id: file.id,
-            originalname: file.name,
-            filename: file.filename || path.basename(file.url),
-            type: file.type,
-            url: file.url
-        }));
-        res.json(files);
+        res.json(data.files[subject][module]);
     } else {
         res.json([]);
     }
 });
 
-// Müəllim girişi
-app.post("/api/teacher-login", (req, res) => {
-    const { username, password } = req.body;
-    const data = loadData();
-    
-    if (data.credentials.teachers[username] && data.credentials.teachers[username].password === password) {
-        res.json({
-            success: true,
-            subject: data.credentials.teachers[username].subject
-        });
-    } else {
-        res.json({
-            success: false,
-            message: "İstifadəçi adı və ya şifrə yanlışdır!"
-        });
-    }
-});
-
-// Modul girişi
-app.post("/api/module-login", (req, res) => {
-    const { subject, username, password } = req.body;
-    const data = loadData();
-    
-    if (data.credentials.modules[subject] && 
-        data.credentials.modules[subject].username === username && 
-        data.credentials.modules[subject].password === password) {
-        res.json({
-            success: true
-        });
-    } else {
-        res.json({
-            success: false,
-            message: "İstifadəçi adı və ya şifrə yanlışdır!"
-        });
-    }
-});
-
-// Fayl yükləmə
-app.post("/api/upload", upload.single("file"), (req, res) => {
-    try {
-        const { subject, module, type } = req.body;
-        const file = req.file;
-        
-        if (!file) {
-            return res.status(400).json({ error: "Fayl yüklənmədi!" });
-        }
-        
-        const data = loadData();
-        
-        // Yeni fayl obyekti yarat
-        const fileObj = {
-            id: Date.now(),
-            name: file.originalname,
-            filename: file.filename,
-            url: `/uploads/${file.filename}`,
-            type: type,
-            uploadedAt: new Date().toISOString()
-        };
-        
-        // Məlumatlara əlavə et
-        if (!data.files[subject]) {
-            data.files[subject] = { lecture: [], colloquium: [], seminar: [] };
-        }
-        
-        data.files[subject][module].push(fileObj);
-        
-        // Saxla
-        if (saveData(data)) {
-            res.json({
-                success: true,
-                filename: file.filename,
-                message: "Fayl uğurla yükləndi!"
-            });
-        } else {
-            res.status(500).json({ error: "Məlumatlar saxlanılmadı!" });
-        }
-    } catch (error) {
-        console.error("Upload error:", error);
-        res.status(500).json({ error: "Server xətası!" });
-    }
-});
-
-// Müəllim fayllarını gətir
+// Muellim fayllarını getir
 app.get("/api/teacher-files/:subject", (req, res) => {
     const { subject } = req.params;
     const data = loadData();
@@ -257,12 +167,90 @@ app.get("/api/teacher-files/:subject", (req, res) => {
     }
 });
 
-// Şifrə yeniləmə
+// Modul girişi
+app.post("/api/module-login", (req, res) => {
+    const { subject, username, password } = req.body;
+    const data = loadData();
+    
+    if (data.credentials.modules[subject] && 
+        data.credentials.modules[subject].username === username && 
+        data.credentials.modules[subject].password === password) {
+        res.json({ success: true });
+    } else {
+        res.json({ success: false });
+    }
+});
+
+// Muellim girişi
+app.post("/api/teacher-login", (req, res) => {
+    const { username, password } = req.body;
+    const data = loadData();
+    
+    if (data.credentials.teachers[username] && 
+        data.credentials.teachers[username].password === password) {
+        res.json({ 
+            success: true, 
+            subject: data.credentials.teachers[username].subject 
+        });
+    } else {
+        res.json({ success: false });
+    }
+});
+
+// Fayl yükleme
+app.post("/api/upload", upload.single("file"), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "Fayl yuklenmedi" });
+        }
+
+        const { subject, module, type } = req.body;
+        const data = loadData();
+
+        // Yeni fayl obyekti yarat
+        const newFile = {
+            id: Date.now(),
+            filename: req.file.filename,
+            originalname: req.file.originalname,
+            type: type,
+            uploadDate: new Date().toISOString()
+        };
+
+        // Faylı verilenler bazasına əlavə et
+        if (!data.files[subject]) {
+            data.files[subject] = { lecture: [], colloquium: [], seminar: [] };
+        }
+        
+        if (!data.files[subject][module]) {
+            data.files[subject][module] = [];
+        }
+
+        data.files[subject][module].push(newFile);
+        
+        // Verilenleri saxla
+        if (saveData(data)) {
+            res.json({ 
+                success: true, 
+                message: "Fayl ugurla yuklendi", 
+                filename: req.file.filename 
+            });
+        } else {
+            res.status(500).json({ error: "Verilenler saxlanilmadi" });
+        }
+    } catch (error) {
+        console.error("Upload error:", error);
+        res.status(500).json({ error: "Server xetasi" });
+    }
+});
+
+// Şifre yenileme
 app.post("/api/update-password", (req, res) => {
     const { teacher, currentPassword, newPassword } = req.body;
     const data = loadData();
     
-    if (data.credentials.teachers[teacher] && data.credentials.teachers[teacher].password === currentPassword) {
+    if (data.credentials.teachers[teacher] && 
+        data.credentials.teachers[teacher].password === currentPassword) {
+        
         data.credentials.teachers[teacher].password = newPassword;
         
         if (saveData(data)) {
@@ -275,7 +263,7 @@ app.post("/api/update-password", (req, res) => {
     }
 });
 
-// Fayl adını yenilə
+// Fayl adını yenileme
 app.post("/api/update-filename", (req, res) => {
     const { fileId, module, subject, newName } = req.body;
     const data = loadData();
@@ -283,7 +271,7 @@ app.post("/api/update-filename", (req, res) => {
     if (data.files[subject] && data.files[subject][module]) {
         const fileIndex = data.files[subject][module].findIndex(f => f.id == fileId);
         if (fileIndex !== -1) {
-            data.files[subject][module][fileIndex].name = newName;
+            data.files[subject][module][fileIndex].originalname = newName;
             
             if (saveData(data)) {
                 res.json({ success: true });
@@ -298,7 +286,7 @@ app.post("/api/update-filename", (req, res) => {
     }
 });
 
-// Faylı sil
+// Fayl silme
 app.post("/api/delete-file", (req, res) => {
     const { fileId, module, subject } = req.body;
     const data = loadData();
@@ -306,13 +294,16 @@ app.post("/api/delete-file", (req, res) => {
     if (data.files[subject] && data.files[subject][module]) {
         const fileIndex = data.files[subject][module].findIndex(f => f.id == fileId);
         if (fileIndex !== -1) {
-            // Əsl faylı da sil
-            const file = data.files[subject][module][fileIndex];
-            if (file.filename) {
-                const filePath = path.join(uploadsDir, file.filename);
+            const deletedFile = data.files[subject][module][fileIndex];
+            
+            // Faylı fiziki olarak sil
+            try {
+                const filePath = path.join(uploadsDir, deletedFile.filename);
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
                 }
+            } catch (error) {
+                console.error("Fayl silinmedi:", error);
             }
             
             data.files[subject][module].splice(fileIndex, 1);
@@ -330,11 +321,18 @@ app.post("/api/delete-file", (req, res) => {
     }
 });
 
+// Xeta idareetmesi
+app.use((error, req, res, next) => {
+    if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: "Fayl hecmi 10MB-dan cox ola bilmez" });
+        }
+    }
+    res.status(500).json({ error: error.message });
+});
+
 // Serveri baslat
 app.listen(PORT, () => {
     console.log("Server http://localhost:" + PORT + " unvaninda isleyir");
     console.log("Upload qovlugu: " + uploadsDir);
-    console.log("✅ Yeni Backend hazırdır!");
-    console.log("✅ Memory Storage aktivdir!");
-    console.log("✅ BASE64 fayl sistemi işləyir!");
 });
